@@ -17,7 +17,6 @@ import {
   Star
 } from 'lucide-react';
 import { Activity, User, Registration, RegistrationStatus } from '../types';
-import { MOCK_USERS } from '../constants';
 import { suggestRegistrationMessage } from '../services/gemini';
 
 interface ActivityDetailProps {
@@ -28,6 +27,7 @@ interface ActivityDetailProps {
   onBack: () => void;
   onOpenChat: () => void;
   getRating: (userId: string) => string | null;
+  allUsers: User[];
 }
 
 const ActivityDetail: React.FC<ActivityDetailProps> = ({ 
@@ -37,7 +37,8 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
   onRegister, 
   onBack,
   onOpenChat,
-  getRating
+  getRating,
+  allUsers
 }) => {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,7 +46,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
 
   const myRegistration = registrations.find(r => r.userId === currentUser.id);
   const approvedCount = registrations.filter(r => r.status === RegistrationStatus.APPROVED).length + 1; // +1 for organizer
-  const organizer = MOCK_USERS.find(u => u.id === activity.organizerId);
+  const organizer = allUsers.find(u => u.id === activity.organizerId);
   const organizerRating = organizer ? getRating(organizer.id) : null;
 
   const handleAiDraft = async () => {
@@ -156,7 +157,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
         <div className="space-y-6">
           <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-lg sticky top-24">
             <div className="flex items-center space-x-4 mb-6">
-              <img src={organizer?.avatar} className="w-12 h-12 rounded-full border-2 border-indigo-100" />
+              <img src={organizer?.avatar} className="w-12 h-12 rounded-full border-2 border-indigo-100 object-cover" />
               <div>
                 <h4 className="font-bold text-gray-900">{organizer?.name}</h4>
                 <div className="flex items-center text-xs text-indigo-500 font-bold">
@@ -247,12 +248,12 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
               <Users className="w-4 h-4 mr-2 text-indigo-400" /> Who's Going ({approvedCount})
             </h4>
             <div className="flex -space-x-3 overflow-hidden">
-              <img src={organizer?.avatar} className="inline-block h-10 w-10 rounded-full ring-2 ring-white" title={organizer?.name} />
+              <img src={organizer?.avatar} className="inline-block h-10 w-10 rounded-full ring-2 ring-white object-cover" title={organizer?.name} />
               {registrations
                 .filter(r => r.status === RegistrationStatus.APPROVED)
                 .map(r => {
-                  const user = MOCK_USERS.find(u => u.id === r.userId);
-                  return <img key={r.id} src={user?.avatar} className="inline-block h-10 w-10 rounded-full ring-2 ring-white" title={user?.name} />;
+                  const user = allUsers.find(u => u.id === r.userId);
+                  return <img key={r.id} src={user?.avatar} className="inline-block h-10 w-10 rounded-full ring-2 ring-white object-cover" title={user?.name} />;
                 })
               }
               {Array.from({ length: Math.max(0, activity.expectedHeadcount - approvedCount) }).map((_, i) => (

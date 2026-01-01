@@ -42,15 +42,17 @@ import Dashboard from './views/Dashboard';
 import ChatView from './views/ChatView';
 import Profile from './views/Profile';
 import ReviewModal from './views/ReviewModal';
+import Auth from './views/Auth';
 
 const App: React.FC = () => {
   // State
-  const [currentUser, setCurrentUser] = useState<User | null>(MOCK_USERS[0]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
+  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS.map(u => ({...u, email: `${u.name.split(' ')[0].toLowerCase()}@example.com`})));
   
   // Navigation State
   const [currentView, setCurrentView] = useState<'discovery' | 'detail' | 'create' | 'dashboard' | 'chat' | 'profile'>('discovery');
@@ -70,7 +72,8 @@ const App: React.FC = () => {
     const savedNotifs = localStorage.getItem('ss_notifications');
     const savedMsgs = localStorage.getItem('ss_messages');
     const savedReviews = localStorage.getItem('ss_reviews');
-    const savedUser = localStorage.getItem('ss_user');
+    const savedUser = localStorage.getItem('ss_currentUser');
+    const savedAllUsers = localStorage.getItem('ss_allUsers');
 
     if (savedActivities) setActivities(JSON.parse(savedActivities));
     if (savedRegs) setRegistrations(JSON.parse(savedRegs));
@@ -78,6 +81,7 @@ const App: React.FC = () => {
     if (savedMsgs) setMessages(JSON.parse(savedMsgs));
     if (savedReviews) setReviews(JSON.parse(savedReviews));
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
+    if (savedAllUsers) setAllUsers(JSON.parse(savedAllUsers));
   }, []);
 
   // Sync to local storage
@@ -87,8 +91,13 @@ const App: React.FC = () => {
     localStorage.setItem('ss_notifications', JSON.stringify(notifications));
     localStorage.setItem('ss_messages', JSON.stringify(messages));
     localStorage.setItem('ss_reviews', JSON.stringify(reviews));
-    if (currentUser) localStorage.setItem('ss_user', JSON.stringify(currentUser));
-  }, [activities, registrations, notifications, messages, reviews, currentUser]);
+    localStorage.setItem('ss_allUsers', JSON.stringify(allUsers));
+    if (currentUser) {
+      localStorage.setItem('ss_currentUser', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('ss_currentUser');
+    }
+  }, [activities, registrations, notifications, messages, reviews, currentUser, allUsers]);
 
   // Utility to get user rating
   const getUserRating = (userId: string) => {
@@ -163,7 +172,7 @@ const App: React.FC = () => {
 
       // If approved, system message in chat
       if (status === RegistrationStatus.APPROVED) {
-        const joiner = MOCK_USERS.find(u => u.id === reg.userId);
+        const joiner = allUsers.find(u => u.id === reg.userId);
         const sysMsg: ChatMessage = {
           id: Math.random().toString(36).substr(2, 9),
           activityId: activity.id,
@@ -214,9 +223,26 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, newMsg]);
   };
 
+  const handleAuthSuccess = (user: User) => {
+    setCurrentUser(user);
+    if (!allUsers.find(u => u.id === user.id)) {
+      setAllUsers(prev => [...prev, user]);
+    }
+    setCurrentView('discovery');
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCurrentView('discovery');
+  };
+
   const markNotifsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
+
+  if (!currentUser) {
+    return <Auth onAuthSuccess={handleAuthSuccess} allUsers={allUsers} />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -279,6 +305,13 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
@@ -299,6 +332,7 @@ const App: React.FC = () => {
             }}
             onCreateRequest={() => setCurrentView('create')}
             userBio={currentUser?.bio || ''}
+            allUsers={allUsers}
           />
         )}
 
@@ -311,6 +345,7 @@ const App: React.FC = () => {
             onBack={() => setCurrentView('discovery')}
             onOpenChat={() => setCurrentView('chat')}
             getRating={getUserRating}
+            allUsers={allUsers}
           />
         )}
 
@@ -339,6 +374,7 @@ const App: React.FC = () => {
             }}
             getRating={getUserRating}
             onReviewRequest={(user, activity) => setReviewTarget({ user, activity })}
+            allUsers={allUsers}
           />
         )}
 
@@ -349,6 +385,7 @@ const App: React.FC = () => {
             currentUser={currentUser!}
             onSendMessage={(text) => sendMessage(selectedActivityId, text)}
             onBack={() => setCurrentView('dashboard')}
+            allUsers={allUsers}
           />
         )}
 
