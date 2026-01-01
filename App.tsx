@@ -39,7 +39,7 @@ const App: React.FC = () => {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -49,20 +49,32 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
+  // Handle RLS Errors specifically
+  const handleDbError = (err: any, context: string) => {
+    console.error(`DB Error (${context}):`, err);
+    if (err.message?.includes('RLS') || err.message?.includes('security policy') || err.code === '42501') {
+      alert(`🚨 DATABASE PERMISSION ERROR\n\nTable: ${context}\n\nThis happens because Supabase "Row-Level Security" is on.\n\nFIX: Go to Supabase SQL Editor and run:\nALTER TABLE ${context} DISABLE ROW LEVEL SECURITY;`);
+    } else {
+      alert(`Error during ${context}: ${err.message || 'Unknown error'}`);
+    }
+  };
+
   // Initial Load from "Database"
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
       try {
-        const [acts, regs, dbUsers, savedUser] = await Promise.all([
+        const [acts, regs, dbUsers, dbReviews, savedUser] = await Promise.all([
           db.getActivities(),
           db.getRegistrations(),
           db.getAllUsers(),
+          db.getReviews(),
           localStorage.getItem('ss_currentUser')
         ]);
         
         setActivities(acts.length > 0 ? acts : INITIAL_ACTIVITIES);
         setRegistrations(regs);
+        setReviews(dbReviews.length > 0 ? dbReviews : MOCK_REVIEWS);
         
         if (dbUsers.length > 0) {
           setAllUsers(dbUsers);
@@ -70,13 +82,13 @@ const App: React.FC = () => {
 
         if (savedUser) {
           const parsedUser = JSON.parse(savedUser);
-          // Always try to get fresh user data from DB if available
           const freshUser = dbUsers.find(u => u.id === parsedUser.id) || parsedUser;
           setCurrentUser(freshUser);
         }
       } catch (e) {
         console.error("Load failed", e);
         setActivities(INITIAL_ACTIVITIES);
+        setReviews(MOCK_REVIEWS);
       } finally {
         setIsLoading(false);
       }
@@ -87,15 +99,14 @@ const App: React.FC = () => {
   // Sync notifications and messages
   useEffect(() => {
     if (currentUser) {
-      db.getNotifications(currentUser.id).then(setNotifications);
+      db.getNotifications(currentUser.id).then(setNotifications).catch(e => handleDbError(e, 'notifications'));
     }
   }, [currentUser, currentView]);
 
-  // Specific effect for chat to handle real-time feeling
   useEffect(() => {
     let interval: any;
     if (selectedActivityId && currentView === 'chat') {
-      const fetchMsgs = () => db.getMessages(selectedActivityId!).then(setMessages);
+      const fetchMsgs = () => db.getMessages(selectedActivityId!).then(setMessages).catch(e => handleDbError(e, 'messages'));
       fetchMsgs();
       interval = setInterval(fetchMsgs, 3000);
     }
@@ -125,12 +136,7 @@ const App: React.FC = () => {
       setActivities(prev => [savedActivity, ...prev]);
       setCurrentView('discovery');
     } catch (err: any) {
-      console.error("Save failed:", err);
-      if (err.message?.includes('RLS') || err.message?.includes('security policy')) {
-        alert("🚨 DATABASE SECURITY ERROR\n\nYour Supabase tables have 'Row-Level Security' enabled.\n\nFIX: Run the SQL provided earlier to disable RLS.");
-      } else {
-        alert(`Could not save event: ${err.message || 'Unknown error'}`);
-      }
+      handleDbError(err, 'activities');
     }
   };
 
@@ -161,7 +167,7 @@ const App: React.FC = () => {
         });
       }
     } catch (err: any) {
-      alert("Registration failed: " + err.message);
+      handleDbError(err, 'registrations');
     }
   };
 
@@ -193,7 +199,7 @@ const App: React.FC = () => {
         }
       }
     } catch (err: any) {
-      alert("Status update failed: " + err.message);
+      handleDbError(err, 'registrations');
     }
   };
 
@@ -206,16 +212,23 @@ const App: React.FC = () => {
         text,
         timestamp: Date.now()
       });
+      // Instant local update for smoothness
+      setMessages(prev => [...prev, {
+        id: Math.random().toString(),
+        activityId,
+        senderId: currentUser.id,
+        text,
+        timestamp: Date.now()
+      }]);
     } catch (err: any) {
-      console.error("Chat failed:", err);
+      handleDbError(err, 'messages');
     }
   };
 
   const handleAuthSuccess = async (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('ss_currentUser', JSON.stringify(user));
-    // Refresh user list to include new user
-    const dbUsers = await db.getAllUsers();
+    const dbUsers = await db.getAllUsers().catch(() => []);
     setAllUsers(dbUsers);
     setCurrentView('discovery');
   };
@@ -231,10 +244,29 @@ const App: React.FC = () => {
       const savedUser = await db.saveUser(updatedUser);
       setCurrentUser(savedUser);
       localStorage.setItem('ss_currentUser', JSON.stringify(savedUser));
-      const dbUsers = await db.getAllUsers();
+      const dbUsers = await db.getAllUsers().catch(() => []);
       setAllUsers(dbUsers);
     } catch (err: any) {
-      alert("Profile update failed: " + err.message);
+      handleDbError(err, 'users');
+    }
+  };
+
+  const handleReviewSubmit = async (rating: number, comment: string) => {
+    if (!reviewTarget || !currentUser) return;
+    try {
+      await db.saveReview({
+        fromUserId: currentUser.id,
+        toUserId: reviewTarget.user.id,
+        activityId: reviewTarget.activity.id,
+        rating,
+        comment,
+        timestamp: Date.now()
+      });
+      const updatedReviews = await db.getReviews();
+      setReviews(updatedReviews);
+      setReviewTarget(null);
+    } catch (err: any) {
+      handleDbError(err, 'reviews');
     }
   };
 
@@ -386,9 +418,7 @@ const App: React.FC = () => {
           targetUser={reviewTarget.user}
           activity={reviewTarget.activity}
           onClose={() => setReviewTarget(null)}
-          onSubmit={(rating, comment) => {
-             setReviewTarget(null);
-          }}
+          onSubmit={handleReviewSubmit}
         />
       )}
     </div>
