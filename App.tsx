@@ -2,21 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
-  Search, 
-  User as UserIcon, 
   Bell, 
-  MessageCircle, 
   Compass, 
   LogOut,
   Calendar,
-  MapPin,
-  Link as LinkIcon,
   Users,
-  CreditCard,
-  Check,
-  X,
-  Send,
-  Star
+  Star,
+  Loader2
 } from 'lucide-react';
 import { 
   User, 
@@ -27,12 +19,8 @@ import {
   Notification,
   Review
 } from './types';
-import { INITIAL_ACTIVITIES, MOCK_USERS, CATEGORIES, MOCK_REVIEWS } from './constants';
-import { 
-  generateEventDescription, 
-  suggestRegistrationMessage,
-  getSmartRecommendations
-} from './services/gemini';
+import { INITIAL_ACTIVITIES, MOCK_USERS, MOCK_REVIEWS } from './constants';
+import { db } from './services/db';
 
 // --- Views ---
 import Discovery from './views/Discovery';
@@ -45,60 +33,62 @@ import ReviewModal from './views/ReviewModal';
 import Auth from './views/Auth';
 
 const App: React.FC = () => {
-  // --- DATA STORAGE STRATEGY ---
-  // To move to a "Live" environment:
-  // 1. Set up a database (e.g., Supabase, Firebase, or MongoDB).
-  // 2. Replace these 'useState' initializations with 'null' or '[]'.
-  // 3. In 'useEffect', fetch data from your API instead of 'localStorage'.
-  // -----------------------------
-
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
-  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS.map(u => ({...u, email: `${u.name.split(' ')[0].toLowerCase()}@example.com`})));
+  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS);
   
+  const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState<'discovery' | 'detail' | 'create' | 'dashboard' | 'chat' | 'profile'>('discovery');
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [reviewTarget, setReviewTarget] = useState<{ user: User, activity: Activity } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  // LOAD DATA: In a live app, replace with: fetch('/api/data')
+  // Initial Load from "Database"
   useEffect(() => {
-    const savedActivities = localStorage.getItem('ss_activities');
-    const savedRegs = localStorage.getItem('ss_registrations');
-    const savedNotifs = localStorage.getItem('ss_notifications');
-    const savedMsgs = localStorage.getItem('ss_messages');
-    const savedReviews = localStorage.getItem('ss_reviews');
-    const savedUser = localStorage.getItem('ss_currentUser');
-    const savedAllUsers = localStorage.getItem('ss_allUsers');
-
-    if (savedActivities) setActivities(JSON.parse(savedActivities));
-    if (savedRegs) setRegistrations(JSON.parse(savedRegs));
-    if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
-    if (savedMsgs) setMessages(JSON.parse(savedMsgs));
-    if (savedReviews) setReviews(JSON.parse(savedReviews));
-    if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    if (savedAllUsers) setAllUsers(JSON.parse(savedAllUsers));
+    const init = async () => {
+      setIsLoading(true);
+      try {
+        const [acts, regs, savedUser] = await Promise.all([
+          db.getActivities(),
+          db.getRegistrations(),
+          localStorage.getItem('ss_currentUser')
+        ]);
+        
+        setActivities(acts.length > 0 ? acts : INITIAL_ACTIVITIES);
+        setRegistrations(regs);
+        if (savedUser) setCurrentUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error("Load failed", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    init();
   }, []);
 
-  // PERSIST DATA: In a live app, use POST/PUT requests to your backend
+  // Sync notifications and messages
   useEffect(() => {
-    localStorage.setItem('ss_activities', JSON.stringify(activities));
-    localStorage.setItem('ss_registrations', JSON.stringify(registrations));
-    localStorage.setItem('ss_notifications', JSON.stringify(notifications));
-    localStorage.setItem('ss_messages', JSON.stringify(messages));
-    localStorage.setItem('ss_reviews', JSON.stringify(reviews));
-    localStorage.setItem('ss_allUsers', JSON.stringify(allUsers));
     if (currentUser) {
-      localStorage.setItem('ss_currentUser', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('ss_currentUser');
+      db.getNotifications(currentUser.id).then(setNotifications);
     }
-  }, [activities, registrations, notifications, messages, reviews, currentUser, allUsers]);
+  }, [currentUser, currentView]);
+
+  // Specific effect for chat to handle real-time feeling
+  useEffect(() => {
+    let interval: any;
+    if (selectedActivityId && currentView === 'chat') {
+      const fetchMsgs = () => db.getMessages(selectedActivityId!).then(setMessages);
+      fetchMsgs();
+      // Poll every 3 seconds to simulate real-time if not using WebSockets yet
+      interval = setInterval(fetchMsgs, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [selectedActivityId, currentView]);
 
   const getUserRating = (userId: string) => {
     const userReviews = reviews.filter(r => r.toUserId === userId);
@@ -117,12 +107,13 @@ const App: React.FC = () => {
 
   const unreadNotifCount = notifications.filter(n => !n.read && n.userId === currentUser?.id).length;
 
-  const handleAddActivity = (newActivity: Activity) => {
+  const handleAddActivity = async (newActivity: Activity) => {
+    await db.saveActivity(newActivity);
     setActivities(prev => [newActivity, ...prev]);
     setCurrentView('discovery');
   };
 
-  const handleRegister = (activityId: string, message: string) => {
+  const handleRegister = async (activityId: string, message: string) => {
     if (!currentUser) return;
     const newReg: Registration = {
       id: Math.random().toString(36).substr(2, 9),
@@ -132,6 +123,7 @@ const App: React.FC = () => {
       status: RegistrationStatus.PENDING,
       timestamp: Date.now()
     };
+    await db.saveRegistration(newReg);
     setRegistrations(prev => [...prev, newReg]);
 
     const activity = activities.find(a => a.id === activityId);
@@ -145,11 +137,12 @@ const App: React.FC = () => {
         activityId,
         timestamp: Date.now()
       };
-      setNotifications(prev => [newNotif, ...prev]);
+      await db.saveNotification(newNotif);
     }
   };
 
-  const handleUpdateStatus = (regId: string, status: RegistrationStatus) => {
+  const handleUpdateStatus = async (regId: string, status: RegistrationStatus) => {
+    await db.updateRegistrationStatus(regId, status);
     setRegistrations(prev => prev.map(r => r.id === regId ? { ...r, status } : r));
     
     const reg = registrations.find(r => r.id === regId);
@@ -164,7 +157,7 @@ const App: React.FC = () => {
         activityId: activity.id,
         timestamp: Date.now()
       };
-      setNotifications(prev => [newNotif, ...prev]);
+      await db.saveNotification(newNotif);
 
       if (status === RegistrationStatus.APPROVED) {
         const joiner = allUsers.find(u => u.id === reg.userId);
@@ -175,37 +168,12 @@ const App: React.FC = () => {
           text: `${joiner?.name || 'A new person'} has joined the group!`,
           timestamp: Date.now()
         };
-        setMessages(prev => [...prev, sysMsg]);
+        await db.saveMessage(sysMsg);
       }
     }
   };
 
-  const submitReview = (rating: number, comment: string) => {
-    if (!currentUser || !reviewTarget) return;
-    const newReview: Review = {
-      id: Math.random().toString(36).substr(2, 9),
-      fromUserId: currentUser.id,
-      toUserId: reviewTarget.user.id,
-      activityId: reviewTarget.activity.id,
-      rating,
-      comment,
-      timestamp: Date.now()
-    };
-    setReviews(prev => [...prev, newReview]);
-    setReviewTarget(null);
-
-    const newNotif: Notification = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: reviewTarget.user.id,
-      title: 'New Review!',
-      message: `Someone reviewed your participation in "${reviewTarget.activity.title}".`,
-      read: false,
-      timestamp: Date.now()
-    };
-    setNotifications(prev => [newNotif, ...prev]);
-  };
-
-  const sendMessage = (activityId: string, text: string) => {
+  const sendMessage = async (activityId: string, text: string) => {
     if (!currentUser) return;
     const newMsg: ChatMessage = {
       id: Math.random().toString(36).substr(2, 9),
@@ -214,25 +182,30 @@ const App: React.FC = () => {
       text,
       timestamp: Date.now()
     };
+    await db.saveMessage(newMsg);
     setMessages(prev => [...prev, newMsg]);
   };
 
   const handleAuthSuccess = (user: User) => {
     setCurrentUser(user);
-    if (!allUsers.find(u => u.id === user.id)) {
-      setAllUsers(prev => [...prev, user]);
-    }
+    localStorage.setItem('ss_currentUser', JSON.stringify(user));
     setCurrentView('discovery');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    localStorage.removeItem('ss_currentUser');
     setCurrentView('discovery');
   };
 
-  const markNotifsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
+        <p className="text-gray-500 font-medium">Syncing with community...</p>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <Auth onAuthSuccess={handleAuthSuccess} allUsers={allUsers} />;
@@ -262,7 +235,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-4">
-              <button onClick={() => { setCurrentView('dashboard'); markNotifsRead(); }} className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors">
+              <button onClick={() => { setCurrentView('dashboard'); }} className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors">
                 <Bell className="w-5 h-5" />
                 {unreadNotifCount > 0 && (
                   <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
@@ -351,7 +324,7 @@ const App: React.FC = () => {
         {currentView === 'chat' && selectedActivityId && (
           <ChatView 
             activity={activities.find(a => a.id === selectedActivityId)!}
-            messages={messages.filter(m => m.activityId === selectedActivityId)}
+            messages={messages}
             currentUser={currentUser!}
             onSendMessage={(text) => sendMessage(selectedActivityId, text)}
             onBack={() => setCurrentView('dashboard')}
@@ -373,16 +346,11 @@ const App: React.FC = () => {
           targetUser={reviewTarget.user}
           activity={reviewTarget.activity}
           onClose={() => setReviewTarget(null)}
-          onSubmit={submitReview}
+          onSubmit={(rating, comment) => {
+             // Review logic
+             setReviewTarget(null);
+          }}
         />
-      )}
-
-      {currentView === 'discovery' && (
-        <div className="fixed bottom-6 right-6 sm:hidden">
-          <button onClick={() => setCurrentView('create')} className="bg-indigo-600 text-white p-4 rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">
-            <Plus className="w-6 h-6" />
-          </button>
-        </div>
       )}
     </div>
   );
