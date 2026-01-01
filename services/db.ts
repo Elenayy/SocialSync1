@@ -109,7 +109,7 @@ export const db = {
         .order('created_at', { ascending: true });
       
       if (error) return [];
-      return data.map(m => ({
+      return data.map((m: any) => ({
         id: m.id,
         activityId: m.activity_id,
         senderId: m.sender_id,
@@ -140,7 +140,7 @@ export const db = {
         .order('created_at', { ascending: false });
       
       if (error) return [];
-      return data.map(n => ({
+      return data.map((n: any) => ({
         id: n.id,
         userId: n.user_id,
         title: n.title,
