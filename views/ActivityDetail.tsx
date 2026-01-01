@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
   Calendar, 
   MapPin, 
   Users, 
+  CreditCard, 
   ExternalLink, 
   MessageCircle,
   Clock,
@@ -44,7 +45,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
   const [isAiDrafting, setIsAiDrafting] = useState(false);
 
   const myRegistration = registrations.find(r => r.userId === currentUser.id);
-  const approvedCount = registrations.filter(r => r.status === RegistrationStatus.APPROVED).length + 1;
+  const approvedCount = registrations.filter(r => r.status === RegistrationStatus.APPROVED).length + 1; // +1 for organizer
   const organizer = allUsers.find(u => u.id === activity.organizerId);
   const organizerRating = organizer ? getRating(organizer.id) : null;
 
@@ -113,7 +114,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
               <div className="flex items-center px-4 py-2 bg-gray-50 rounded-xl border border-gray-100">
                 <MapPin className="w-5 h-5 mr-3 text-indigo-500" />
                 <div className="text-sm">
-                  <div className="font-semibold text-wrap max-w-[150px]">{activity.location}</div>
+                  <div className="font-semibold">{activity.location}</div>
                   <div className="text-xs text-gray-400">Location</div>
                 </div>
               </div>
@@ -199,7 +200,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
                 <p className="text-sm font-bold text-indigo-900 mb-2">You are the organizer</p>
                 <button 
                   onClick={onOpenChat}
-                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-md"
+                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700"
                 >
                   Manage Group Chat
                 </button>
@@ -221,7 +222,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Tell the organizer why you'd like to join..."
-                    className="w-full h-32 p-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm shadow-inner"
+                    className="w-full h-32 p-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                   />
                 </div>
                 <button 
