@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, Users, Info } from 'lucide-react';
 import { Activity, ChatMessage, User } from '../types';
-import { MOCK_USERS } from '../constants';
 
 interface ChatViewProps {
   activity: Activity;
@@ -10,6 +9,7 @@ interface ChatViewProps {
   currentUser: User;
   onSendMessage: (text: string) => void;
   onBack: () => void;
+  allUsers: User[];
 }
 
 const ChatView: React.FC<ChatViewProps> = ({ 
@@ -17,7 +17,8 @@ const ChatView: React.FC<ChatViewProps> = ({
   messages, 
   currentUser, 
   onSendMessage, 
-  onBack 
+  onBack,
+  allUsers
 }) => {
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,7 +70,7 @@ const ChatView: React.FC<ChatViewProps> = ({
         {messages.map((msg) => {
           const isSystem = msg.senderId === 'system';
           const isMe = msg.senderId === currentUser.id;
-          const sender = MOCK_USERS.find(u => u.id === msg.senderId);
+          const sender = allUsers.find(u => u.id === msg.senderId);
 
           if (isSystem) {
             return (
