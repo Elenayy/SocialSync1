@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { Activity, Registration, ChatMessage, Notification, RegistrationStatus } from '../types';
+import { Activity, Registration, ChatMessage, Notification, RegistrationStatus, User } from '../types';
 
 /**
  * 🚀 SUPABASE CONFIGURATION
@@ -35,6 +35,56 @@ const mapRegistration = (r: any): Registration => ({
 });
 
 export const db = {
+  // --- Users ---
+  async getAllUsers(): Promise<User[]> {
+    try {
+      const { data, error } = await supabase.from('users').select('*');
+      if (error) {
+        console.warn("Could not fetch users:", error.message);
+        return [];
+      }
+      return data as User[];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+      
+      if (error) return null;
+      return data as User;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async saveUser(user: User): Promise<User> {
+    const { data, error } = await supabase
+      .from('users')
+      .upsert({
+        id: user.id,
+        email: user.email.toLowerCase(),
+        name: user.name,
+        avatar: user.avatar,
+        bio: user.bio,
+        interests: user.interests
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("User save failed:", error);
+      throw new Error(error.message);
+    }
+    return data as User;
+  },
+
   // --- Activities ---
   async getActivities(): Promise<Activity[]> {
     try {
@@ -155,7 +205,7 @@ export const db = {
         title: n.title,
         message: n.message,
         read: n.read,
-        activityId: n.activity_id, // Fixed: was activity_id
+        activityId: n.activity_id,
         timestamp: new Date(n.created_at).getTime()
       }));
     } catch (e) {

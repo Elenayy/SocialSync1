@@ -54,16 +54,26 @@ const App: React.FC = () => {
     const init = async () => {
       setIsLoading(true);
       try {
-        const [acts, regs, savedUser] = await Promise.all([
+        const [acts, regs, dbUsers, savedUser] = await Promise.all([
           db.getActivities(),
           db.getRegistrations(),
+          db.getAllUsers(),
           localStorage.getItem('ss_currentUser')
         ]);
         
-        // Use live data if available, otherwise fallback to mock for demo
         setActivities(acts.length > 0 ? acts : INITIAL_ACTIVITIES);
         setRegistrations(regs);
-        if (savedUser) setCurrentUser(JSON.parse(savedUser));
+        
+        if (dbUsers.length > 0) {
+          setAllUsers(dbUsers);
+        }
+
+        if (savedUser) {
+          const parsedUser = JSON.parse(savedUser);
+          // Always try to get fresh user data from DB if available
+          const freshUser = dbUsers.find(u => u.id === parsedUser.id) || parsedUser;
+          setCurrentUser(freshUser);
+        }
       } catch (e) {
         console.error("Load failed", e);
         setActivities(INITIAL_ACTIVITIES);
@@ -117,7 +127,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Save failed:", err);
       if (err.message?.includes('RLS') || err.message?.includes('security policy')) {
-        alert("🚨 DATABASE SECURITY ERROR\n\nYour Supabase tables have 'Row-Level Security' enabled, which is blocking the save.\n\nFIX: Go to your Supabase SQL Editor and run:\nALTER TABLE activities DISABLE ROW LEVEL SECURITY;");
+        alert("🚨 DATABASE SECURITY ERROR\n\nYour Supabase tables have 'Row-Level Security' enabled.\n\nFIX: Run the SQL provided earlier to disable RLS.");
       } else {
         alert(`Could not save event: ${err.message || 'Unknown error'}`);
       }
@@ -201,9 +211,12 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAuthSuccess = (user: User) => {
+  const handleAuthSuccess = async (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('ss_currentUser', JSON.stringify(user));
+    // Refresh user list to include new user
+    const dbUsers = await db.getAllUsers();
+    setAllUsers(dbUsers);
     setCurrentView('discovery');
   };
 
@@ -211,6 +224,18 @@ const App: React.FC = () => {
     setCurrentUser(null);
     localStorage.removeItem('ss_currentUser');
     setCurrentView('discovery');
+  };
+
+  const handleUpdateProfile = async (updatedUser: User) => {
+    try {
+      const savedUser = await db.saveUser(updatedUser);
+      setCurrentUser(savedUser);
+      localStorage.setItem('ss_currentUser', JSON.stringify(savedUser));
+      const dbUsers = await db.getAllUsers();
+      setAllUsers(dbUsers);
+    } catch (err: any) {
+      alert("Profile update failed: " + err.message);
+    }
   };
 
   if (isLoading) {
@@ -351,7 +376,7 @@ const App: React.FC = () => {
           <Profile 
             user={currentUser}
             reviews={reviews.filter(r => r.toUserId === currentUser.id)}
-            onUpdateUser={setCurrentUser}
+            onUpdateUser={handleUpdateProfile}
           />
         )}
       </main>
