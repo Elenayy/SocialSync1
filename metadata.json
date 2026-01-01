@@ -1,0 +1,7 @@
+{
+  "name": "SocialSync - Find Your Event Tribe",
+  "description": "A platform for discovering and joining offline group activities. Find companions for events you don't want to attend alone, from concerts to festivals.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
