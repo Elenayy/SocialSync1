@@ -33,12 +33,12 @@ const Discovery: React.FC<DiscoveryProps> = ({
 
   useEffect(() => {
     const fetchRecs = async () => {
-      if (!userBio) return;
+      if (!userBio || activities.length === 0) return;
       setLoadingRecs(true);
-      const activitySummary = activities.map(a => `${a.title}: ${a.description}`).join('; ');
+      const activitySummary = activities.slice(0, 5).map(a => `${a.title}: ${a.description}`).join('; ');
       const response = await getSmartRecommendations(userBio, activitySummary);
       if (response) {
-        setRecs(response.split('\n').map(r => r.trim().replace(/^\d+\.\s*/, '')));
+        setRecs(response.split('\n').map(r => r.trim().replace(/^\d+\.\s*/, '').replace(/"/g, '')).filter(Boolean));
       }
       setLoadingRecs(false);
     };
@@ -66,9 +66,9 @@ const Discovery: React.FC<DiscoveryProps> = ({
           <div className="bg-white p-2 rounded-lg shadow-sm">
             <Sparkles className="w-5 h-5 text-indigo-600" />
           </div>
-          <div>
+          <div className="flex-1">
             <h3 className="text-sm font-bold text-indigo-900">AI Suggested for You</h3>
-            <p className="text-xs text-indigo-700 mb-2">Based on your interests, we think you'd love these:</p>
+            <p className="text-xs text-indigo-700 mb-2">Based on your profile, you might enjoy these events:</p>
             <div className="flex flex-wrap gap-2">
               {recs.map((rec, i) => (
                 <span key={i} className="bg-white px-3 py-1 rounded-full text-xs font-medium text-indigo-600 border border-indigo-200">
@@ -89,13 +89,13 @@ const Discovery: React.FC<DiscoveryProps> = ({
             placeholder="Search activities, locations, vibes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
           />
         </div>
         <select 
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
-          className="px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white"
+          className="px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white shadow-sm"
         >
           <option value="All">All Categories</option>
           {CATEGORIES.map(cat => (
@@ -107,7 +107,7 @@ const Discovery: React.FC<DiscoveryProps> = ({
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {activities.map(activity => {
-          const organizer = allUsers.find(u => u.id === activity.organizerId);
+          const host = allUsers.find(u => u.id === activity.organizerId);
           return (
             <div 
               key={activity.id}
@@ -146,13 +146,13 @@ const Discovery: React.FC<DiscoveryProps> = ({
                 <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                   <div className="flex items-center">
                     <img 
-                      src={organizer?.avatar} 
-                      className="w-6 h-6 rounded-full border border-white"
+                      src={host?.avatar} 
+                      className="w-6 h-6 rounded-full border border-gray-100"
                     />
-                    <span className="text-xs text-gray-500 ml-2">Hosted by {organizer?.name}</span>
+                    <span className="text-xs text-gray-500 ml-2">Hosted by {host?.name || 'Unknown User'}</span>
                   </div>
                   <div className="text-right">
-                    <span className="block text-xs text-gray-400">Approx. price</span>
+                    <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-tight">Price</span>
                     <span className="text-indigo-600 font-bold">£{activity.pricePerPerson}</span>
                   </div>
                 </div>

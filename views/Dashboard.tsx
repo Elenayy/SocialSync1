@@ -10,9 +10,11 @@ import {
   LayoutDashboard,
   Inbox,
   CalendarCheck,
-  Star
+  Star,
+  UserPlus
 } from 'lucide-react';
 import { Activity, Registration, RegistrationStatus, Notification, User } from '../types';
+import { MOCK_USERS } from '../constants';
 
 interface DashboardProps {
   activities: Activity[];
@@ -24,7 +26,6 @@ interface DashboardProps {
   onOpenChat: (id: string) => void;
   getRating: (userId: string) => string | null;
   onReviewRequest: (user: User, activity: Activity) => void;
-  allUsers: User[];
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -36,8 +37,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onSelectActivity,
   onOpenChat,
   getRating,
-  onReviewRequest,
-  allUsers
+  onReviewRequest
 }) => {
   const [tab, setTab] = useState<'approvals' | 'my-events' | 'my-apps'>('approvals');
 
@@ -94,7 +94,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         {tab === 'approvals' && (
           <div className="space-y-4">
             {pendingApprovals.length > 0 ? pendingApprovals.map(reg => {
-              const user = allUsers.find(u => u.id === reg.userId);
+              const user = MOCK_USERS.find(u => u.id === reg.userId);
               const activity = activities.find(a => a.id === reg.activityId);
               const userRating = user ? getRating(user.id) : null;
               
@@ -172,7 +172,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Event Completed</p>
                       <div className="flex flex-wrap gap-2">
                         {participants.map(p => {
-                          const u = allUsers.find(user => user.id === p.userId);
+                          const u = MOCK_USERS.find(user => user.id === p.userId);
                           if (!u) return null;
                           return (
                             <button
@@ -230,7 +230,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       {reg.status === RegistrationStatus.APPROVED && isPast && (
                         <button 
                           onClick={() => {
-                            const org = allUsers.find(u => u.id === activity?.organizerId);
+                            const org = MOCK_USERS.find(u => u.id === activity?.organizerId);
                             if (org && activity) onReviewRequest(org, activity);
                           }}
                           className="flex items-center text-yellow-600 font-bold text-xs hover:underline"

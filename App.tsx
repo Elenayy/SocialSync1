@@ -2,21 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
-  Search, 
   User as UserIcon, 
   Bell, 
-  MessageCircle, 
   Compass, 
-  LogOut,
-  Calendar,
-  MapPin,
-  Link as LinkIcon,
-  Users,
-  CreditCard,
-  Check,
-  X,
-  Send,
-  Star
+  Calendar, 
+  Users, 
+  Star,
+  ChevronDown
 } from 'lucide-react';
 import { 
   User, 
@@ -27,12 +19,7 @@ import {
   Notification,
   Review
 } from './types';
-import { INITIAL_ACTIVITIES, MOCK_USERS, CATEGORIES, MOCK_REVIEWS } from './constants';
-import { 
-  generateEventDescription, 
-  suggestRegistrationMessage,
-  getSmartRecommendations
-} from './services/gemini';
+import { INITIAL_ACTIVITIES, MOCK_USERS, MOCK_REVIEWS } from './constants';
 
 // --- Views ---
 import Discovery from './views/Discovery';
@@ -42,21 +29,21 @@ import Dashboard from './views/Dashboard';
 import ChatView from './views/ChatView';
 import Profile from './views/Profile';
 import ReviewModal from './views/ReviewModal';
-import Auth from './views/Auth';
 
 const App: React.FC = () => {
   // State
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS);
+  const [currentUser, setCurrentUser] = useState<User | null>(MOCK_USERS[0]);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
-  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS.map(u => ({...u, email: `${u.name.split(' ')[0].toLowerCase()}@example.com`})));
   
   // Navigation State
   const [currentView, setCurrentView] = useState<'discovery' | 'detail' | 'create' | 'dashboard' | 'chat' | 'profile'>('discovery');
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const [showUserSwitcher, setShowUserSwitcher] = useState(false);
 
   // Review System State
   const [reviewTarget, setReviewTarget] = useState<{ user: User, activity: Activity } | null>(null);
@@ -67,37 +54,39 @@ const App: React.FC = () => {
 
   // Load from local storage
   useEffect(() => {
+    const savedUsers = localStorage.getItem('ss_all_users');
     const savedActivities = localStorage.getItem('ss_activities');
     const savedRegs = localStorage.getItem('ss_registrations');
     const savedNotifs = localStorage.getItem('ss_notifications');
     const savedMsgs = localStorage.getItem('ss_messages');
     const savedReviews = localStorage.getItem('ss_reviews');
-    const savedUser = localStorage.getItem('ss_currentUser');
-    const savedAllUsers = localStorage.getItem('ss_allUsers');
+    const savedUserId = localStorage.getItem('ss_current_user_id');
 
+    if (savedUsers) {
+      const parsedUsers = JSON.parse(savedUsers);
+      setAllUsers(parsedUsers);
+      if (savedUserId) {
+        const found = parsedUsers.find((u: User) => u.id === savedUserId);
+        if (found) setCurrentUser(found);
+      }
+    }
     if (savedActivities) setActivities(JSON.parse(savedActivities));
     if (savedRegs) setRegistrations(JSON.parse(savedRegs));
     if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
     if (savedMsgs) setMessages(JSON.parse(savedMsgs));
     if (savedReviews) setReviews(JSON.parse(savedReviews));
-    if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    if (savedAllUsers) setAllUsers(JSON.parse(savedAllUsers));
   }, []);
 
   // Sync to local storage
   useEffect(() => {
+    localStorage.setItem('ss_all_users', JSON.stringify(allUsers));
     localStorage.setItem('ss_activities', JSON.stringify(activities));
     localStorage.setItem('ss_registrations', JSON.stringify(registrations));
     localStorage.setItem('ss_notifications', JSON.stringify(notifications));
     localStorage.setItem('ss_messages', JSON.stringify(messages));
     localStorage.setItem('ss_reviews', JSON.stringify(reviews));
-    localStorage.setItem('ss_allUsers', JSON.stringify(allUsers));
-    if (currentUser) {
-      localStorage.setItem('ss_currentUser', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('ss_currentUser');
-    }
-  }, [activities, registrations, notifications, messages, reviews, currentUser, allUsers]);
+    if (currentUser) localStorage.setItem('ss_current_user_id', currentUser.id);
+  }, [allUsers, activities, registrations, notifications, messages, reviews, currentUser]);
 
   // Utility to get user rating
   const getUserRating = (userId: string) => {
@@ -121,6 +110,17 @@ const App: React.FC = () => {
   // Handlers
   const handleAddActivity = (newActivity: Activity) => {
     setActivities(prev => [newActivity, ...prev]);
+    setCurrentView('discovery');
+  };
+
+  const handleUpdateUser = (updatedUser: User) => {
+    setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    setCurrentUser(updatedUser);
+  };
+
+  const switchUser = (user: User) => {
+    setCurrentUser(user);
+    setShowUserSwitcher(false);
     setCurrentView('discovery');
   };
 
@@ -155,7 +155,6 @@ const App: React.FC = () => {
   const handleUpdateStatus = (regId: string, status: RegistrationStatus) => {
     setRegistrations(prev => prev.map(r => r.id === regId ? { ...r, status } : r));
     
-    // Notify user
     const reg = registrations.find(r => r.id === regId);
     const activity = activities.find(a => a.id === reg?.activityId);
     if (reg && activity) {
@@ -170,7 +169,6 @@ const App: React.FC = () => {
       };
       setNotifications(prev => [newNotif, ...prev]);
 
-      // If approved, system message in chat
       if (status === RegistrationStatus.APPROVED) {
         const joiner = allUsers.find(u => u.id === reg.userId);
         const sysMsg: ChatMessage = {
@@ -199,7 +197,6 @@ const App: React.FC = () => {
     setReviews(prev => [...prev, newReview]);
     setReviewTarget(null);
 
-    // Notify reviewed user
     const newNotif: Notification = {
       id: Math.random().toString(36).substr(2, 9),
       userId: reviewTarget.user.id,
@@ -223,26 +220,9 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, newMsg]);
   };
 
-  const handleAuthSuccess = (user: User) => {
-    setCurrentUser(user);
-    if (!allUsers.find(u => u.id === user.id)) {
-      setAllUsers(prev => [...prev, user]);
-    }
-    setCurrentView('discovery');
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setCurrentView('discovery');
-  };
-
   const markNotifsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
-
-  if (!currentUser) {
-    return <Auth onAuthSuccess={handleAuthSuccess} allUsers={allUsers} />;
-  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -277,7 +257,7 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <button 
                 onClick={() => {
                   setCurrentView('dashboard');
@@ -292,26 +272,49 @@ const App: React.FC = () => {
                   </span>
                 )}
               </button>
-              <div 
-                className={`flex items-center space-x-2 border-l pl-4 border-gray-200 cursor-pointer hover:opacity-80 transition-opacity ${currentView === 'profile' ? 'text-indigo-600' : ''}`}
-                onClick={() => setCurrentView('profile')}
-              >
-                <img src={currentUser?.avatar} className="w-8 h-8 rounded-full border border-indigo-100" />
-                <div className="hidden sm:flex flex-col items-start leading-none">
-                  <span className="text-sm font-bold text-gray-700">{currentUser?.name}</span>
-                  <div className="flex items-center text-[10px] font-bold text-indigo-500">
-                    <Star className="w-2.5 h-2.5 fill-current mr-0.5" />
-                    {getUserRating(currentUser?.id || '') || 'New'}
+              
+              <div className="relative">
+                <div 
+                  className={`flex items-center space-x-2 border-l pl-2 sm:pl-4 border-gray-200 cursor-pointer hover:opacity-80 transition-opacity ${currentView === 'profile' ? 'text-indigo-600' : ''}`}
+                  onClick={() => setShowUserSwitcher(!showUserSwitcher)}
+                >
+                  <img src={currentUser?.avatar} className="w-8 h-8 rounded-full border border-indigo-100" />
+                  <div className="hidden sm:flex flex-col items-start leading-none">
+                    <div className="flex items-center">
+                      <span className="text-sm font-bold text-gray-700 mr-1">{currentUser?.name}</span>
+                      <ChevronDown className="w-3 h-3 text-gray-400" />
+                    </div>
+                    <div className="flex items-center text-[10px] font-bold text-indigo-500">
+                      <Star className="w-2.5 h-2.5 fill-current mr-0.5" />
+                      {getUserRating(currentUser?.id || '') || 'New'}
+                    </div>
                   </div>
                 </div>
+
+                {showUserSwitcher && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-[60] animate-in slide-in-from-top-2 duration-200">
+                    <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Switch User (Demo)</p>
+                    {allUsers.map(user => (
+                      <button
+                        key={user.id}
+                        onClick={() => switchUser(user)}
+                        className={`w-full flex items-center px-4 py-2 text-sm hover:bg-indigo-50 transition-colors ${currentUser?.id === user.id ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-700'}`}
+                      >
+                        <img src={user.avatar} className="w-6 h-6 rounded-full mr-2" />
+                        {user.name}
+                      </button>
+                    ))}
+                    <div className="border-t border-gray-50 mt-2 pt-2">
+                      <button
+                        onClick={() => { setCurrentView('profile'); setShowUserSwitcher(false); }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:text-indigo-600 flex items-center"
+                      >
+                        <UserIcon className="w-4 h-4 mr-2" /> View Profile
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                title="Logout"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
@@ -393,7 +396,7 @@ const App: React.FC = () => {
           <Profile 
             user={currentUser}
             reviews={reviews.filter(r => r.toUserId === currentUser.id)}
-            onUpdateUser={setCurrentUser}
+            onUpdateUser={handleUpdateUser}
           />
         )}
       </main>

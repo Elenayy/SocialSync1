@@ -1,5 +1,5 @@
 
-import { User, Activity, Review } from './types';
+import React from 'react';
 
 export const CATEGORIES = [
   'Festival',
@@ -16,10 +16,9 @@ export const INTEREST_OPTIONS = [
   'Board Games', 'Yoga', 'Wine Tasting', 'Travel', 'Cinema', 'Reading'
 ];
 
-export const MOCK_USERS: User[] = [
+export const MOCK_USERS = [
   {
     id: 'u1',
-    email: 'alex@example.com',
     name: 'Alex Johnson',
     avatar: 'https://picsum.photos/seed/alex/200',
     bio: 'Avid explorer and music lover.',
@@ -27,7 +26,6 @@ export const MOCK_USERS: User[] = [
   },
   {
     id: 'u2',
-    email: 'sarah@example.com',
     name: 'Sarah Chen',
     avatar: 'https://picsum.photos/seed/sarah/200',
     bio: 'Photographer and foodie.',
@@ -35,7 +33,6 @@ export const MOCK_USERS: User[] = [
   },
   {
     id: 'u3',
-    email: 'marcus@example.com',
     name: 'Marcus Miller',
     avatar: 'https://picsum.photos/seed/marcus/200',
     bio: 'Tech enthusiast and hiker.',
@@ -43,7 +40,7 @@ export const MOCK_USERS: User[] = [
   }
 ];
 
-export const MOCK_REVIEWS: Review[] = [
+export const MOCK_REVIEWS = [
   {
     id: 'r1',
     fromUserId: 'u2',
@@ -55,7 +52,7 @@ export const MOCK_REVIEWS: Review[] = [
   }
 ];
 
-export const INITIAL_ACTIVITIES: Activity[] = [
+export const INITIAL_ACTIVITIES = [
   {
     id: 'a1',
     title: 'Winter Wonderland London',
