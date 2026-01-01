@@ -1,7 +1,9 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize the Gemini API client. 
+// The API_KEY is injected by Vite during the build process from your Vercel Environment Variables.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 export const generateEventDescription = async (eventName: string, category: string) => {
   try {
@@ -43,6 +45,7 @@ export const generateBioFromInterests = async (interests: string[]) => {
 
 export const getSmartRecommendations = async (userBio: string, activities: string) => {
   try {
+    if (!activities) return "";
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Based on this user bio: "${userBio}", and this list of available activities (names and descriptions): ${activities}, recommend the top 2 activities. Return the names only.`,
