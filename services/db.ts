@@ -4,7 +4,6 @@ import { Activity, Registration, ChatMessage, Notification, RegistrationStatus }
 
 /**
  * 🚀 SUPABASE CONFIGURATION
- * Successfully connected to your live database.
  */
 const SUPABASE_URL = 'https://tjwdqxcxbtyyvocjxpuj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqd2RxeGN4YnR5eXZvY2p4cHVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyOTY5NzIsImV4cCI6MjA4Mjg3Mjk3Mn0.AvrLXjS_NjxW1fuGLFkD1aDESY5ZbH4yRPYnQZuM-4s';
@@ -74,7 +73,7 @@ export const db = {
       .single();
 
     if (error) {
-      console.error("Supabase insert error:", error);
+      console.error("Supabase insert error details:", error);
       throw new Error(error.message);
     }
     return mapActivity(data);
@@ -109,7 +108,7 @@ export const db = {
     if (error) throw error;
   },
 
-  // --- Messages (Real-time Chat) ---
+  // --- Messages ---
   async getMessages(activityId: string): Promise<ChatMessage[]> {
     try {
       const { data, error } = await supabase
@@ -156,7 +155,7 @@ export const db = {
         title: n.title,
         message: n.message,
         read: n.read,
-        activity_id: n.activity_id,
+        activityId: n.activity_id, // Fixed: was activity_id
         timestamp: new Date(n.created_at).getTime()
       }));
     } catch (e) {

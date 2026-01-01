@@ -8,7 +8,8 @@ import {
   Calendar,
   Users,
   Star,
-  Loader2
+  Loader2,
+  Database
 } from 'lucide-react';
 import { 
   User, 
@@ -59,7 +60,7 @@ const App: React.FC = () => {
           localStorage.getItem('ss_currentUser')
         ]);
         
-        // Only use mock data if DB returns nothing
+        // Use live data if available, otherwise fallback to mock for demo
         setActivities(acts.length > 0 ? acts : INITIAL_ACTIVITIES);
         setRegistrations(regs);
         if (savedUser) setCurrentUser(JSON.parse(savedUser));
@@ -86,7 +87,6 @@ const App: React.FC = () => {
     if (selectedActivityId && currentView === 'chat') {
       const fetchMsgs = () => db.getMessages(selectedActivityId!).then(setMessages);
       fetchMsgs();
-      // Poll every 3 seconds to simulate real-time if not using WebSockets yet
       interval = setInterval(fetchMsgs, 3000);
     }
     return () => clearInterval(interval);
@@ -116,7 +116,11 @@ const App: React.FC = () => {
       setCurrentView('discovery');
     } catch (err: any) {
       console.error("Save failed:", err);
-      alert(`Could not save event: ${err.message || 'Unknown error'}. Please check if you created the database tables and disabled RLS.`);
+      if (err.message?.includes('RLS') || err.message?.includes('security policy')) {
+        alert("🚨 DATABASE SECURITY ERROR\n\nYour Supabase tables have 'Row-Level Security' enabled, which is blocking the save.\n\nFIX: Go to your Supabase SQL Editor and run:\nALTER TABLE activities DISABLE ROW LEVEL SECURITY;");
+      } else {
+        alert(`Could not save event: ${err.message || 'Unknown error'}`);
+      }
     }
   };
 
@@ -132,21 +136,19 @@ const App: React.FC = () => {
       };
       await db.saveRegistration(newReg);
       
-      // Re-fetch registrations to get the latest
       const updatedRegs = await db.getRegistrations();
       setRegistrations(updatedRegs);
 
       const activity = activities.find(a => a.id === activityId);
       if (activity) {
-        const newNotif: Omit<Notification, 'id'> = {
+        await db.saveNotification({
           userId: activity.organizerId,
           title: 'New Registration',
           message: `${currentUser.name} wants to join "${activity.title}".`,
           read: false,
           activityId,
           timestamp: Date.now()
-        };
-        await db.saveNotification(newNotif);
+        });
       }
     } catch (err: any) {
       alert("Registration failed: " + err.message);
@@ -161,25 +163,23 @@ const App: React.FC = () => {
       const reg = registrations.find(r => r.id === regId);
       const activity = activities.find(a => a.id === reg?.activityId);
       if (reg && activity) {
-        const newNotif: Omit<Notification, 'id'> = {
+        await db.saveNotification({
           userId: reg.userId,
           title: status === RegistrationStatus.APPROVED ? 'Approved!' : 'Application Update',
           message: `Your application to "${activity.title}" was ${status.toLowerCase()}.`,
           read: false,
           activityId: activity.id,
           timestamp: Date.now()
-        };
-        await db.saveNotification(newNotif);
+        });
 
         if (status === RegistrationStatus.APPROVED) {
           const joiner = allUsers.find(u => u.id === reg.userId);
-          const sysMsg: Omit<ChatMessage, 'id'> = {
+          await db.saveMessage({
             activityId: activity.id,
             senderId: 'system',
             text: `${joiner?.name || 'A new person'} has joined the group!`,
             timestamp: Date.now()
-          };
-          await db.saveMessage(sysMsg);
+          });
         }
       }
     } catch (err: any) {
@@ -190,14 +190,12 @@ const App: React.FC = () => {
   const sendMessage = async (activityId: string, text: string) => {
     if (!currentUser) return;
     try {
-      const newMsg: Omit<ChatMessage, 'id'> = {
+      await db.saveMessage({
         activityId,
         senderId: currentUser.id,
         text,
         timestamp: Date.now()
-      };
-      await db.saveMessage(newMsg);
-      // We rely on polling to refresh messages for everyone
+      });
     } catch (err: any) {
       console.error("Chat failed:", err);
     }
@@ -364,7 +362,6 @@ const App: React.FC = () => {
           activity={reviewTarget.activity}
           onClose={() => setReviewTarget(null)}
           onSubmit={(rating, comment) => {
-             // Review logic
              setReviewTarget(null);
           }}
         />
