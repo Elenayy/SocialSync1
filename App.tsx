@@ -59,11 +59,13 @@ const App: React.FC = () => {
           localStorage.getItem('ss_currentUser')
         ]);
         
+        // Only use mock data if DB returns nothing
         setActivities(acts.length > 0 ? acts : INITIAL_ACTIVITIES);
         setRegistrations(regs);
         if (savedUser) setCurrentUser(JSON.parse(savedUser));
       } catch (e) {
         console.error("Load failed", e);
+        setActivities(INITIAL_ACTIVITIES);
       } finally {
         setIsLoading(false);
       }
@@ -107,83 +109,98 @@ const App: React.FC = () => {
 
   const unreadNotifCount = notifications.filter(n => !n.read && n.userId === currentUser?.id).length;
 
-  const handleAddActivity = async (newActivity: Activity) => {
-    await db.saveActivity(newActivity);
-    setActivities(prev => [newActivity, ...prev]);
-    setCurrentView('discovery');
+  const handleAddActivity = async (newActivity: Omit<Activity, 'id'>) => {
+    try {
+      const savedActivity = await db.saveActivity(newActivity);
+      setActivities(prev => [savedActivity, ...prev]);
+      setCurrentView('discovery');
+    } catch (err: any) {
+      console.error("Save failed:", err);
+      alert(`Could not save event: ${err.message || 'Unknown error'}. Please check if you created the database tables and disabled RLS.`);
+    }
   };
 
   const handleRegister = async (activityId: string, message: string) => {
     if (!currentUser) return;
-    const newReg: Registration = {
-      id: Math.random().toString(36).substr(2, 9),
-      activityId,
-      userId: currentUser.id,
-      message,
-      status: RegistrationStatus.PENDING,
-      timestamp: Date.now()
-    };
-    await db.saveRegistration(newReg);
-    setRegistrations(prev => [...prev, newReg]);
-
-    const activity = activities.find(a => a.id === activityId);
-    if (activity) {
-      const newNotif: Notification = {
-        id: Math.random().toString(36).substr(2, 9),
-        userId: activity.organizerId,
-        title: 'New Registration',
-        message: `${currentUser.name} wants to join "${activity.title}".`,
-        read: false,
+    try {
+      const newReg: Omit<Registration, 'id'> = {
         activityId,
+        userId: currentUser.id,
+        message,
+        status: RegistrationStatus.PENDING,
         timestamp: Date.now()
       };
-      await db.saveNotification(newNotif);
+      await db.saveRegistration(newReg);
+      
+      // Re-fetch registrations to get the latest
+      const updatedRegs = await db.getRegistrations();
+      setRegistrations(updatedRegs);
+
+      const activity = activities.find(a => a.id === activityId);
+      if (activity) {
+        const newNotif: Omit<Notification, 'id'> = {
+          userId: activity.organizerId,
+          title: 'New Registration',
+          message: `${currentUser.name} wants to join "${activity.title}".`,
+          read: false,
+          activityId,
+          timestamp: Date.now()
+        };
+        await db.saveNotification(newNotif);
+      }
+    } catch (err: any) {
+      alert("Registration failed: " + err.message);
     }
   };
 
   const handleUpdateStatus = async (regId: string, status: RegistrationStatus) => {
-    await db.updateRegistrationStatus(regId, status);
-    setRegistrations(prev => prev.map(r => r.id === regId ? { ...r, status } : r));
-    
-    const reg = registrations.find(r => r.id === regId);
-    const activity = activities.find(a => a.id === reg?.activityId);
-    if (reg && activity) {
-      const newNotif: Notification = {
-        id: Math.random().toString(36).substr(2, 9),
-        userId: reg.userId,
-        title: status === RegistrationStatus.APPROVED ? 'Approved!' : 'Application Update',
-        message: `Your application to "${activity.title}" was ${status.toLowerCase()}.`,
-        read: false,
-        activityId: activity.id,
-        timestamp: Date.now()
-      };
-      await db.saveNotification(newNotif);
-
-      if (status === RegistrationStatus.APPROVED) {
-        const joiner = allUsers.find(u => u.id === reg.userId);
-        const sysMsg: ChatMessage = {
-          id: Math.random().toString(36).substr(2, 9),
+    try {
+      await db.updateRegistrationStatus(regId, status);
+      setRegistrations(prev => prev.map(r => r.id === regId ? { ...r, status } : r));
+      
+      const reg = registrations.find(r => r.id === regId);
+      const activity = activities.find(a => a.id === reg?.activityId);
+      if (reg && activity) {
+        const newNotif: Omit<Notification, 'id'> = {
+          userId: reg.userId,
+          title: status === RegistrationStatus.APPROVED ? 'Approved!' : 'Application Update',
+          message: `Your application to "${activity.title}" was ${status.toLowerCase()}.`,
+          read: false,
           activityId: activity.id,
-          senderId: 'system',
-          text: `${joiner?.name || 'A new person'} has joined the group!`,
           timestamp: Date.now()
         };
-        await db.saveMessage(sysMsg);
+        await db.saveNotification(newNotif);
+
+        if (status === RegistrationStatus.APPROVED) {
+          const joiner = allUsers.find(u => u.id === reg.userId);
+          const sysMsg: Omit<ChatMessage, 'id'> = {
+            activityId: activity.id,
+            senderId: 'system',
+            text: `${joiner?.name || 'A new person'} has joined the group!`,
+            timestamp: Date.now()
+          };
+          await db.saveMessage(sysMsg);
+        }
       }
+    } catch (err: any) {
+      alert("Status update failed: " + err.message);
     }
   };
 
   const sendMessage = async (activityId: string, text: string) => {
     if (!currentUser) return;
-    const newMsg: ChatMessage = {
-      id: Math.random().toString(36).substr(2, 9),
-      activityId,
-      senderId: currentUser.id,
-      text,
-      timestamp: Date.now()
-    };
-    await db.saveMessage(newMsg);
-    setMessages(prev => [...prev, newMsg]);
+    try {
+      const newMsg: Omit<ChatMessage, 'id'> = {
+        activityId,
+        senderId: currentUser.id,
+        text,
+        timestamp: Date.now()
+      };
+      await db.saveMessage(newMsg);
+      // We rely on polling to refresh messages for everyone
+    } catch (err: any) {
+      console.error("Chat failed:", err);
+    }
   };
 
   const handleAuthSuccess = (user: User) => {

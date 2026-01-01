@@ -8,7 +8,8 @@ import {
   Users, 
   CreditCard, 
   Image as ImageIcon,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { Activity, User } from '../types';
 import { CATEGORIES } from '../constants';
@@ -16,7 +17,7 @@ import { generateEventDescription } from '../services/gemini';
 
 interface CreateActivityProps {
   currentUser: User;
-  onSubmit: (activity: Activity) => void;
+  onSubmit: (activity: Omit<Activity, 'id'>) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -33,6 +34,7 @@ const CreateActivity: React.FC<CreateActivityProps> = ({ currentUser, onSubmit, 
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleMagicFill = async () => {
     if (!formData.title) return alert("Please enter an event name first!");
@@ -42,15 +44,19 @@ const CreateActivity: React.FC<CreateActivityProps> = ({ currentUser, onSubmit, 
     setIsGenerating(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newActivity: Activity = {
-      ...formData,
-      id: Math.random().toString(36).substr(2, 9),
-      organizerId: currentUser.id,
-      imageUrl: `https://picsum.photos/seed/${formData.title}/800/400`
-    };
-    onSubmit(newActivity);
+    setIsSubmitting(true);
+    try {
+      const newActivity: Omit<Activity, 'id'> = {
+        ...formData,
+        organizerId: currentUser.id,
+        imageUrl: `https://picsum.photos/seed/${encodeURIComponent(formData.title)}/800/400`
+      };
+      await onSubmit(newActivity);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -189,15 +195,21 @@ const CreateActivity: React.FC<CreateActivityProps> = ({ currentUser, onSubmit, 
           <button 
             type="button" 
             onClick={onCancel}
-            className="flex-1 py-4 border border-gray-200 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 transition-all"
+            disabled={isSubmitting}
+            className="flex-1 py-4 border border-gray-200 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
           >
             Cancel
           </button>
           <button 
             type="submit"
-            className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-extrabold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
+            disabled={isSubmitting}
+            className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-extrabold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center"
           >
-            Create Event
+            {isSubmitting ? (
+              <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Creating...</>
+            ) : (
+              'Create Event'
+            )}
           </button>
         </div>
       </form>

@@ -48,26 +48,36 @@ export const db = {
         console.warn("Supabase fetch failed:", error.message);
         return [];
       }
-      return data.map(mapActivity);
+      return (data || []).map(mapActivity);
     } catch (e) {
+      console.error("Database connection error:", e);
       return [];
     }
   },
 
-  async saveActivity(activity: Activity): Promise<void> {
-    const { error } = await supabase.from('activities').insert({
-      title: activity.title,
-      description: activity.description,
-      organizer_id: activity.organizerId,
-      date_time: activity.dateTime,
-      location: activity.location,
-      official_link: activity.officialLink,
-      expected_headcount: activity.expectedHeadcount,
-      price_per_person: activity.pricePerPerson,
-      category: activity.category,
-      image_url: activity.imageUrl
-    });
-    if (error) throw error;
+  async saveActivity(activity: Omit<Activity, 'id'>): Promise<Activity> {
+    const { data, error } = await supabase
+      .from('activities')
+      .insert({
+        title: activity.title,
+        description: activity.description,
+        organizer_id: activity.organizerId,
+        date_time: activity.dateTime,
+        location: activity.location,
+        official_link: activity.officialLink,
+        expected_headcount: activity.expectedHeadcount,
+        price_per_person: activity.pricePerPerson,
+        category: activity.category,
+        image_url: activity.imageUrl
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase insert error:", error);
+      throw new Error(error.message);
+    }
+    return mapActivity(data);
   },
 
   // --- Registrations ---
@@ -75,13 +85,13 @@ export const db = {
     try {
       const { data, error } = await supabase.from('registrations').select('*');
       if (error) return [];
-      return data.map(mapRegistration);
+      return (data || []).map(mapRegistration);
     } catch (e) {
       return [];
     }
   },
 
-  async saveRegistration(reg: Registration): Promise<void> {
+  async saveRegistration(reg: Omit<Registration, 'id'>): Promise<void> {
     const { error } = await supabase.from('registrations').insert({
       activity_id: reg.activityId,
       user_id: reg.userId,
@@ -109,7 +119,7 @@ export const db = {
         .order('created_at', { ascending: true });
       
       if (error) return [];
-      return data.map((m: any) => ({
+      return (data || []).map((m: any) => ({
         id: m.id,
         activityId: m.activity_id,
         senderId: m.sender_id,
@@ -121,7 +131,7 @@ export const db = {
     }
   },
 
-  async saveMessage(msg: ChatMessage): Promise<void> {
+  async saveMessage(msg: Omit<ChatMessage, 'id'>): Promise<void> {
     const { error } = await supabase.from('messages').insert({
       activity_id: msg.activityId,
       sender_id: msg.senderId,
@@ -140,13 +150,13 @@ export const db = {
         .order('created_at', { ascending: false });
       
       if (error) return [];
-      return data.map((n: any) => ({
+      return (data || []).map((n: any) => ({
         id: n.id,
         userId: n.user_id,
         title: n.title,
         message: n.message,
         read: n.read,
-        activityId: n.activity_id,
+        activity_id: n.activity_id,
         timestamp: new Date(n.created_at).getTime()
       }));
     } catch (e) {
@@ -154,7 +164,7 @@ export const db = {
     }
   },
 
-  async saveNotification(notif: Notification): Promise<void> {
+  async saveNotification(notif: Omit<Notification, 'id'>): Promise<void> {
     const { error } = await supabase.from('notifications').insert({
       user_id: notif.userId,
       title: notif.title,
