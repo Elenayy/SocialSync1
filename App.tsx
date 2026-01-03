@@ -9,7 +9,8 @@ import {
   Users,
   Star,
   Loader2,
-  Database
+  Database,
+  MessageSquare
 } from 'lucide-react';
 import { 
   User, 
@@ -32,6 +33,7 @@ import ChatView from './views/ChatView';
 import Profile from './views/Profile';
 import ReviewModal from './views/ReviewModal';
 import Auth from './views/Auth';
+import Inbox from './views/Inbox';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -43,7 +45,7 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS);
   
   const [isLoading, setIsLoading] = useState(true);
-  const [currentView, setCurrentView] = useState<'discovery' | 'detail' | 'create' | 'dashboard' | 'chat' | 'profile'>('discovery');
+  const [currentView, setCurrentView] = useState<'discovery' | 'detail' | 'create' | 'dashboard' | 'chat' | 'profile' | 'inbox'>('discovery');
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [reviewTarget, setReviewTarget] = useState<{ user: User, activity: Activity } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -307,7 +309,10 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-4">
-              <button onClick={() => { setCurrentView('dashboard'); }} className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors">
+              <button onClick={() => { setCurrentView('inbox'); }} className={`relative p-2 transition-colors ${currentView === 'inbox' ? 'text-indigo-600' : 'text-gray-500 hover:text-indigo-600'}`} title="Messages">
+                <MessageSquare className="w-5 h-5" />
+              </button>
+              <button onClick={() => { setCurrentView('dashboard'); }} className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors" title="Notifications">
                 <Bell className="w-5 h-5" />
                 {unreadNotifCount > 0 && (
                   <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
@@ -393,13 +398,26 @@ const App: React.FC = () => {
           />
         )}
 
+        {currentView === 'inbox' && (
+          <Inbox 
+            activities={activities}
+            registrations={registrations}
+            currentUser={currentUser!}
+            onOpenChat={(id) => {
+              setSelectedActivityId(id);
+              setCurrentView('chat');
+            }}
+            allUsers={allUsers}
+          />
+        )}
+
         {currentView === 'chat' && selectedActivityId && (
           <ChatView 
             activity={activities.find(a => a.id === selectedActivityId)!}
             messages={messages}
             currentUser={currentUser!}
             onSendMessage={(text) => sendMessage(selectedActivityId, text)}
-            onBack={() => setCurrentView('dashboard')}
+            onBack={() => setCurrentView('inbox')}
             allUsers={allUsers}
           />
         )}
