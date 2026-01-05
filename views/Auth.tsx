@@ -29,21 +29,28 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Check database for user
-      const user = await db.getUserByEmail(email);
-      if (user) {
-        onAuthSuccess(user);
-      } else {
-        // Fallback to mock users for demo compatibility
-        const mockUser = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (mockUser) {
-          onAuthSuccess(mockUser);
+      const authUser = await db.signIn(email);
+      if (authUser) {
+        const dbUsers = await db.getAllUsers();
+        const profile = dbUsers.find(u => u.id === authUser.id);
+        if (profile) {
+          onAuthSuccess(profile);
         } else {
-          alert("No account found with this email. Try signing up!");
+          // If auth exists but no profile, create a placeholder
+          const newUser: User = {
+            id: authUser.id,
+            email: email.toLowerCase(),
+            name: authUser.user_metadata?.name || 'New Member',
+            avatar: 'https://picsum.photos/seed/new/200',
+            bio: 'Just joined SocialSync!',
+            interests: []
+          };
+          const saved = await db.saveUser(newUser);
+          onAuthSuccess(saved);
         }
       }
     } catch (err: any) {
-      alert("Login error: " + err.message);
+      alert("Login error: " + (err.message || "Email not found or password incorrect. Try signing up!"));
     } finally {
       setIsSubmitting(false);
     }
@@ -77,17 +84,19 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
   const handleSignUp = async () => {
     setIsSubmitting(true);
     try {
-      const newUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        email,
-        name,
-        avatar,
-        bio,
-        interests
-      };
-      // Persist to database
-      const savedUser = await db.saveUser(newUser);
-      onAuthSuccess(savedUser);
+      const authUser = await db.signUp(email, name);
+      if (authUser) {
+        const newUser: User = {
+          id: authUser.id,
+          email: email.toLowerCase(),
+          name,
+          avatar,
+          bio,
+          interests
+        };
+        const savedUser = await db.saveUser(newUser);
+        onAuthSuccess(savedUser);
+      }
     } catch (err: any) {
       alert("Sign up failed: " + err.message);
     } finally {
@@ -99,7 +108,6 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-[2rem] shadow-2xl shadow-indigo-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
         <div className="p-8 md:p-12">
-          {/* Header */}
           <div className="flex flex-col items-center mb-10">
             <div className="bg-indigo-600 p-3 rounded-2xl mb-4 shadow-lg shadow-indigo-200">
               <Users className="text-white w-8 h-8" />
@@ -124,6 +132,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
                   />
                 </div>
               </div>
+              <p className="text-[10px] text-gray-400 italic px-1">Note: Use 'password123' if prompted for a password.</p>
               <button 
                 type="submit"
                 disabled={isSubmitting}
@@ -146,7 +155,6 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
             </form>
           ) : (
             <div className="space-y-6">
-              {/* Progress Bar */}
               <div className="flex justify-between items-center mb-8 px-2">
                 {[1, 2, 3].map((s) => (
                   <div key={s} className="flex items-center">
@@ -273,12 +281,6 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
                       accept="image/*"
                     />
                   </div>
-                  
-                  <div className="text-center space-y-2">
-                    <h3 className="font-bold text-lg">Looking good, {name.split(' ')[0]}!</h3>
-                    <p className="text-sm text-gray-500">Upload a photo so people recognize you at events.</p>
-                  </div>
-
                   <div className="w-full flex gap-4">
                     <button onClick={() => setStep(2)} className="flex-1 p-4 bg-slate-100 rounded-2xl text-gray-400 hover:bg-slate-200 transition-all">
                       <ChevronLeft className="w-5 h-5 mx-auto" />
@@ -305,7 +307,6 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, allUsers }) => {
             </div>
           )}
         </div>
-        
         <div className="bg-slate-50 px-8 py-6 flex items-center justify-center space-x-2">
           <ShieldCheck className="w-4 h-4 text-slate-400" />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Secure Community Platform</span>

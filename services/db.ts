@@ -2,15 +2,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { Activity, Registration, ChatMessage, Notification, RegistrationStatus, User, Review } from '../types';
 
-/**
- * 🚀 SUPABASE CONFIGURATION
- */
 const SUPABASE_URL = 'https://tjwdqxcxbtyyvocjxpuj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqd2RxeGN4YnR5eXZvY2p4cHVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyOTY5NzIsImV4cCI6MjA4Mjg3Mjk3Mn0.AvrLXjS_NjxW1fuGLFkD1aDESY5ZbH4yRPYnQZuM-4s';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Helper to map DB snake_case to App camelCase
+// Map DB snake_case to App camelCase
 const mapActivity = (a: any): Activity => ({
   id: a.id,
   title: a.title,
@@ -34,31 +31,38 @@ const mapRegistration = (r: any): Registration => ({
   timestamp: new Date(r.created_at).getTime()
 });
 
-const mapReview = (rev: any): Review => ({
-  id: rev.id,
-  fromUserId: rev.from_user_id,
-  toUserId: rev.to_user_id,
-  activityId: rev.activity_id,
-  rating: rev.rating,
-  comment: rev.comment,
-  timestamp: new Date(rev.created_at).getTime()
-});
-
 export const db = {
+  // --- Auth ---
+  async signUp(email: string, name: string) {
+    // Note: For a real app, you'd collect a password. For this demo flow, 
+    // we use a fixed password or suggest the user uses '123456' for testing.
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: 'password123', 
+      options: { data: { name } }
+    });
+    if (error) throw error;
+    return data.user;
+  },
+
+  async signIn(email: string) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: 'password123',
+    });
+    if (error) throw error;
+    return data.user;
+  },
+
+  async signOut() {
+    await supabase.auth.signOut();
+  },
+
   // --- Users ---
   async getAllUsers(): Promise<User[]> {
     const { data, error } = await supabase.from('users').select('*');
-    if (error) return [];
-    return data as User[];
-  },
-
-  async getUserByEmail(email: string): Promise<User | null> {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email.toLowerCase())
-      .maybeSingle();
-    return error ? null : (data as User);
+    if (error) throw error;
+    return (data || []) as User[];
   },
 
   async saveUser(user: User): Promise<User> {
@@ -84,7 +88,7 @@ export const db = {
       .from('activities')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) return [];
+    if (error) throw error;
     return (data || []).map(mapActivity);
   },
 
@@ -112,7 +116,7 @@ export const db = {
   // --- Registrations ---
   async getRegistrations(): Promise<Registration[]> {
     const { data, error } = await supabase.from('registrations').select('*');
-    if (error) return [];
+    if (error) throw error;
     return (data || []).map(mapRegistration);
   },
 
@@ -141,7 +145,7 @@ export const db = {
       .select('*')
       .eq('activity_id', activityId)
       .order('created_at', { ascending: true });
-    if (error) return [];
+    if (error) throw error;
     return (data || []).map((m: any) => ({
       id: m.id,
       activityId: m.activity_id,
@@ -163,8 +167,16 @@ export const db = {
   // --- Reviews ---
   async getReviews(): Promise<Review[]> {
     const { data, error } = await supabase.from('reviews').select('*');
-    if (error) return [];
-    return (data || []).map(mapReview);
+    if (error) throw error;
+    return (data || []).map((rev: any) => ({
+      id: rev.id,
+      fromUserId: rev.from_user_id,
+      toUserId: rev.to_user_id,
+      activity_id: rev.activity_id,
+      rating: rev.rating,
+      comment: rev.comment,
+      timestamp: new Date(rev.created_at).getTime()
+    }));
   },
 
   async saveReview(review: Omit<Review, 'id'>): Promise<void> {
@@ -185,7 +197,7 @@ export const db = {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    if (error) return [];
+    if (error) throw error;
     return (data || []).map((n: any) => ({
       id: n.id,
       userId: n.user_id,

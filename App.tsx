@@ -22,7 +22,7 @@ import {
   Review
 } from './types';
 import { INITIAL_ACTIVITIES, MOCK_USERS, MOCK_REVIEWS } from './constants';
-import { db } from './services/db';
+import { db, supabase } from './services/db';
 
 // --- Views ---
 import Discovery from './views/Discovery';
@@ -55,42 +55,51 @@ const App: React.FC = () => {
   const handleDbError = (err: any, context: string) => {
     console.error(`DB Error (${context}):`, err);
     if (err.message?.includes('RLS') || err.message?.includes('security policy') || err.code === '42501') {
-      alert(`🚨 DATABASE PERMISSION ERROR\n\nTable: ${context}\n\nThis happens because Supabase "Row-Level Security" is on.\n\nFIX: Go to Supabase SQL Editor and run:\nALTER TABLE ${context} DISABLE ROW LEVEL SECURITY;`);
+      alert(`🚨 DATABASE PERMISSION ERROR\n\nTable: ${context}\n\nThis happens because Supabase "Row-Level Security" is on.\n\nFIX: Go to Supabase SQL Editor and run the policy script.`);
     } else {
       alert(`Error during ${context}: ${err.message || 'Unknown error'}`);
     }
   };
+
+  // Listen to Supabase Auth State
+  useEffect(() => {
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const users = await db.getAllUsers().catch(() => []);
+        const profile = users.find(u => u.id === session.user.id);
+        if (profile) setCurrentUser(profile);
+      } else {
+        setCurrentUser(null);
+      }
+    });
+  }, []);
 
   // Initial Load from "Database"
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
       try {
-        const [acts, regs, dbUsers, dbReviews, savedUser] = await Promise.all([
+        const [acts, regs, dbUsers, dbReviews] = await Promise.all([
           db.getActivities(),
           db.getRegistrations(),
           db.getAllUsers(),
-          db.getReviews(),
-          localStorage.getItem('ss_currentUser')
+          db.getReviews()
         ]);
         
         setActivities(acts.length > 0 ? acts : INITIAL_ACTIVITIES);
         setRegistrations(regs);
         setReviews(dbReviews.length > 0 ? dbReviews : MOCK_REVIEWS);
-        
-        if (dbUsers.length > 0) {
-          setAllUsers(dbUsers);
-        }
+        if (dbUsers.length > 0) setAllUsers(dbUsers);
 
-        if (savedUser) {
-          const parsedUser = JSON.parse(savedUser);
-          const freshUser = dbUsers.find(u => u.id === parsedUser.id) || parsedUser;
-          setCurrentUser(freshUser);
+        // Check if session already exists
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = dbUsers.find(u => u.id === session.user.id);
+          if (profile) setCurrentUser(profile);
         }
       } catch (e) {
         console.error("Load failed", e);
         setActivities(INITIAL_ACTIVITIES);
-        setReviews(MOCK_REVIEWS);
       } finally {
         setIsLoading(false);
       }
@@ -153,7 +162,6 @@ const App: React.FC = () => {
         timestamp: Date.now()
       };
       await db.saveRegistration(newReg);
-      
       const updatedRegs = await db.getRegistrations();
       setRegistrations(updatedRegs);
 
@@ -191,11 +199,10 @@ const App: React.FC = () => {
         });
 
         if (status === RegistrationStatus.APPROVED) {
-          const joiner = allUsers.find(u => u.id === reg.userId);
           await db.saveMessage({
             activityId: activity.id,
             senderId: 'system',
-            text: `${joiner?.name || 'A new person'} has joined the group!`,
+            text: `${currentUser?.name || 'A new person'} has joined the group!`,
             timestamp: Date.now()
           });
         }
@@ -214,7 +221,6 @@ const App: React.FC = () => {
         text,
         timestamp: Date.now()
       });
-      // Instant local update for smoothness
       setMessages(prev => [...prev, {
         id: Math.random().toString(),
         activityId,
@@ -229,15 +235,14 @@ const App: React.FC = () => {
 
   const handleAuthSuccess = async (user: User) => {
     setCurrentUser(user);
-    localStorage.setItem('ss_currentUser', JSON.stringify(user));
     const dbUsers = await db.getAllUsers().catch(() => []);
     setAllUsers(dbUsers);
     setCurrentView('discovery');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await db.signOut();
     setCurrentUser(null);
-    localStorage.removeItem('ss_currentUser');
     setCurrentView('discovery');
   };
 
@@ -245,7 +250,6 @@ const App: React.FC = () => {
     try {
       const savedUser = await db.saveUser(updatedUser);
       setCurrentUser(savedUser);
-      localStorage.setItem('ss_currentUser', JSON.stringify(savedUser));
       const dbUsers = await db.getAllUsers().catch(() => []);
       setAllUsers(dbUsers);
     } catch (err: any) {
@@ -276,7 +280,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
-        <p className="text-gray-500 font-medium">Syncing with community...</p>
+        <p className="text-gray-500 font-medium">Authenticating...</p>
       </div>
     );
   }
